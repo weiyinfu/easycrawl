@@ -72,9 +72,8 @@ public class CloneSite {
             BufferedReader cin = Files.newBufferedReader(Paths.get("clonesite.properties"), StandardCharsets.UTF_8);
             p.load(cin);
             var configFolder = p.getProperty("target");
-            if (!configFolder.startsWith("/")) {
-                logger.error("targetFolder should use absolute path");
-                System.exit(-1);
+            if (configFolder.startsWith("~/")) {
+                configFolder = configFolder.replaceFirst("^~", System.getProperty("user.home"));
             }
             this.targetFolder = Paths.get(configFolder);
             this.prefix = urlList(p.getProperty("prefix"));
