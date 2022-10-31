@@ -63,7 +63,10 @@ public class CloneSite {
     }
 
     List<String> urlList(String s) {
-        return Arrays.stream(s.split(",")).map(String::trim).filter(x -> x.length() > 0).collect(Collectors.toList());
+        return Arrays.stream(s.split(","))
+                .map(String::trim)
+                .filter(x -> x.length() > 0)
+                .collect(Collectors.toList());
     }
 
     void init() {
@@ -120,8 +123,23 @@ public class CloneSite {
      * now表示当前html网页url，resource表示资源文件url，返回二者的相对位置
      * resourceType表示是否强制resourceURL发生变化
      */
+    void show() {
+        try {
+            throw new Exception("baga");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        System.exit(-1);
+    }
+
     String path2relative(String htmlUrl, String resourceUrl, String resourceType) {
-        return url2path(htmlUrl, "html").getParent().relativize(url2path(resourceUrl, resourceType)).toString().replace('\\', '/');
+        var shouldVisitResource = shouldVisit(resourceUrl);
+        if (!shouldVisitResource) {
+            return resourceUrl;
+        }
+        var htmlLocalPath = url2path(htmlUrl, "html");
+        var resourceLocalPath = url2path(resourceUrl, resourceType);
+        return htmlLocalPath.getParent().relativize(resourceLocalPath).toString().replace('\\', '/');
     }
 
     /**
@@ -167,6 +185,23 @@ public class CloneSite {
         }
     }
 
+    static class RequestMaterialType {
+        public static final String binary = "binary";
+        public static final String html = "html";
+    }
+
+    void pushRequest(String url, String type) {
+        if (shouldVisit(url)) {
+            Request req = new Request();
+            req.setUrl(url);
+            Map<String, Object> ma = new HashMap<>();
+            ma.put("type", type);
+            req.setMeta(ma);
+            req.setCallback(handler);
+            pushRequest(req);
+        }
+    }
+
     void pushRequest(Request req) {
         Path p = url2path(req.getUrl(), (String) req.getMeta().get("type"));
         if (!shouldVisit(req.getUrl())) return;
@@ -207,15 +242,21 @@ public class CloneSite {
                 String s = i.absUrl("src");
                 if (s.trim().length() == 0) continue;
                 i.attr("src", path2relative(url, s, null));
-                Request req = new Request();
-                req.setUrl(s);
-                Map<String, Object> ma = new HashMap<>();
-                ma.put("type", "binary");
-                req.setMeta(ma);
-                req.setCallback(handler);
-                pushRequest(req);
+                pushRequest(s, "binary");
             }
         }
+    }
+
+    int getLayerCount(String s) {
+        int ans = 0;
+        while (true) {
+            if (s.startsWith("../", ans)) {
+                ans += 3;
+            } else {
+                break;
+            }
+        }
+        return ans / 3;
     }
 
     /**
@@ -229,13 +270,7 @@ public class CloneSite {
                 String s = i.absUrl("href");
                 if (s.trim().length() == 0) continue;
                 i.attr("href", path2relative(url, s, null));
-                Request req = new Request();
-                req.setUrl(s);
-                Map<String, Object> ma = new HashMap<>();
-                ma.put("type", "binary");
-                req.setMeta(ma);
-                req.setCallback(handler);
-                pushRequest(req);
+                pushRequest(s, RequestMaterialType.binary);
             }
         }
     }
@@ -267,15 +302,7 @@ public class CloneSite {
                 String s = i.absUrl("href");
                 if (s.trim().length() == 0) continue;
                 i.attr("href", path2relative(url, s, "html"));
-                if (shouldVisit(s) && !scheduler.hasVisited(s)) {
-                    Request req = new Request();
-                    req.setUrl(s);
-                    Map<String, Object> ma = new TreeMap<>();
-                    ma.put("type", "html");
-                    req.setMeta(ma);
-                    req.setCallback(handler);
-                    pushRequest(req);
-                }
+                pushRequest(s, RequestMaterialType.html);
             }
         }
     }
@@ -289,10 +316,14 @@ public class CloneSite {
             } else {
                 String html = new String(resp.getData(), charset);
                 Document doc = Jsoup.parse(html, req.getUrl());
-                src(req.getUrl(), doc);
-                hrefOfResource(req.getUrl(), doc);
-                hrefOfHtml(req.getUrl(), doc);
-                writeFile(url2path(req.getUrl(), "html"), doc.html(), doc.charset());
+                {
+                    src(req.getUrl(), doc);
+                    hrefOfResource(req.getUrl(), doc);
+                    hrefOfHtml(req.getUrl(), doc);
+                }
+                var filepath = url2path(req.getUrl(), "html");
+                writeFile(filepath, doc.html(), doc.charset());
+                logger.info(String.format("saving %s=>%s", req.getUrl(), filepath));
             }
         }
     };
